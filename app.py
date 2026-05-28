@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
+import calendar
 
 # 1. App Configuration
-# We collapse the sidebar by default since the app is now date-automatic
-st.set_page_config(page_title="CHP Shift Rota Perpetual", layout="wide", initial_sidebar_state="collapsed")
+# Sidebar is open by default so users can see the new options
+st.set_page_config(page_title="CHP Shift Rota Perpetual", layout="wide", initial_sidebar_state="expanded")
 
 # Inject Custom CSS to force a dark background and white text globally
 st.markdown("""
@@ -51,18 +52,40 @@ def get_shift(target_date, group_name):
     idx = (delta + OFFSETS[group_name]) % 8
     return CYCLE[idx]
 
-# 4. Generate Rota Data (Today to Jan 31 of next year)
-today = date.today()
-end_date = date(today.year + 1, 1, 31)
+# 4. Sidebar UI for Filtering
+st.sidebar.header("📅 Display Options")
+view_mode = st.sidebar.radio(
+    "Choose View Mode:",
+    ("Continuous (Today Onwards)", "Specific Month")
+)
 
-# Calculate total days to loop through
-num_days = (end_date - today).days + 1
+today = date.today()
+
+# Determine the date range based on the selected view mode
+if view_mode == "Continuous (Today Onwards)":
+    start_date = today
+    end_date = date(today.year + 1, 1, 31)
+    num_days = (end_date - start_date).days + 1
+else:
+    # Year and Month inputs appear only if "Specific Month" is selected
+    sel_year = st.sidebar.number_input("Year", min_value=2024, max_value=2050, value=today.year, step=1)
+    # Default the month dropdown to the current month
+    sel_month = st.sidebar.selectbox("Month", range(1, 13), format_func=lambda x: calendar.month_name[x], index=today.month - 1)
+    
+    start_date = date(sel_year, sel_month, 1)
+    num_days = calendar.monthrange(sel_year, sel_month)[1]
+
+# 5. Generate Rota Data
 rota_data = []
 
 for i in range(num_days):
-    curr_date = today + timedelta(days=i)
+    if view_mode == "Continuous (Today Onwards)":
+        curr_date = start_date + timedelta(days=i)
+    else:
+        # For a specific month, build the date directly
+        curr_date = date(sel_year, sel_month, i + 1)
+        
     date_str_mm_dd = curr_date.strftime("%m-%d")
-    
     holiday = HOLIDAYS.get(date_str_mm_dd, "")
 
     row = {
@@ -78,10 +101,9 @@ for i in range(num_days):
 
 df = pd.DataFrame(rota_data)
 
-# 5. Styling the DataFrame for Dark Theme
+# 6. Styling the DataFrame for Dark Theme
 def highlight_shifts(val):
     """Applies high-contrast dark theme colors to shifts."""
-    # Format: 'Shift': ('Background Color', 'Text Color')
     colors = {
         'M': ('#D4A373', '#000000'), # Sand background -> Black text
         'E': ('#90323D', '#FFFFFF'), # Muted Dark Red -> White text
@@ -95,15 +117,15 @@ def highlight_shifts(val):
         return f'background-color: {bg_color}; color: {text_color}; font-weight: bold; text-align: center;'
     return ''
 
-# Apply styling to the updated group columns
 styled_df = df.style.map(
     highlight_shifts, 
     subset=['Group A', 'Group B', 'Group C', 'Group D']
 )
 
-# 6. UI Output 
-# Height is set to 700 to allow smooth scrolling through the long list
-st.dataframe(styled_df, use_container_width=True, hide_index=True, height=700)
+# 7. UI Output
+# If in continuous mode, restrict height to enable scrolling. If specific month, let it fit the data naturally.
+table_height = 700 if view_mode == "Continuous (Today Onwards)" else None
+st.dataframe(styled_df, use_container_width=True, hide_index=True, height=table_height)
 
 # Footer Information
 st.markdown("---")
