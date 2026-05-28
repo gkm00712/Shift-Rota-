@@ -32,17 +32,18 @@ st.title("🏭 CHP Shift Rota")
 st.markdown("**NTPC Unchahar | Safety First**")
 
 # 2. Rota Logic Setup
-CYCLE = ['M', 'M', 'E', 'E', 'N', 'N', 'O', 'G']
+# Updated cycle with suffixes for 1st and 2nd days
+CYCLE = ['M1', 'M2', 'E1', 'E2', 'N1', 'N2', 'O', 'G']
 
 # Base Date is set to May 28, 2026 to sync perfectly with user's live data
 BASE_DATE = date(2026, 5, 28)
 
 # Group offsets calibrated to the May 28, 2026 base date
 OFFSETS = {
-    'A': 3,   # 2nd Evening
-    'B': 5,   # 2nd Night
-    'C': 7,   # General
-    'D': 1    # 2nd Morning
+    'A': 3,   # 2nd Evening (E2)
+    'B': 5,   # 2nd Night (N2)
+    'C': 7,   # General (G)
+    'D': 1    # 2nd Morning (M2)
 }
 
 HOLIDAYS = {
@@ -134,10 +135,14 @@ df = pd.DataFrame(rota_data)
 
 # 6. Styling the DataFrame for Dark Theme
 def highlight_shifts(val):
+    # Updated to apply colors to the suffixed shift names
     colors = {
-        'M': ('#D4A373', '#000000'), 
-        'E': ('#90323D', '#FFFFFF'), 
-        'N': ('#212F45', '#FFFFFF'), 
+        'M1': ('#D4A373', '#000000'), 
+        'M2': ('#D4A373', '#000000'), 
+        'E1': ('#90323D', '#FFFFFF'), 
+        'E2': ('#90323D', '#FFFFFF'), 
+        'N1': ('#212F45', '#FFFFFF'), 
+        'N2': ('#212F45', '#FFFFFF'), 
         'O': ('#3E4C5E', '#FFFFFF'), 
         'G': ('#2D6A4F', '#FFFFFF')  
     }
@@ -162,7 +167,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='font-size: 0.9em; color: #ccc;'>
-<b>Timings:</b> M (07-14) | E (14-22) | N (22-07) <br>
+<b>Timings:</b> M1/M2 (07-14) | E1/E2 (14-22) | N1/N2 (22-07) <br>
 <i>Note: General shifts ('G') automatically convert to Off ('O') on Sundays and Holidays.</i>
 </div>
 """, unsafe_allow_html=True)
