@@ -4,7 +4,11 @@ from datetime import date, timedelta
 import calendar
 
 # 1. App Configuration
-st.set_page_config(page_title="CHP Shift Rota Perpetual", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="CHP Shift Rota Perpetual", layout="centered", initial_sidebar_state="expanded")
+
+# Initialize Session State for Custom Holidays
+if 'custom_holidays' not in st.session_state:
+    st.session_state.custom_holidays = {}
 
 # Inject Custom CSS for Dark Theme and Mobile Padding reduction
 st.markdown("""
@@ -32,13 +36,9 @@ st.title("🏭 CHP Shift Rota")
 st.markdown("**NTPC Unchahar | Safety First**")
 
 # 2. Rota Logic Setup
-# Updated cycle with suffixes for 1st and 2nd days
 CYCLE = ['M1', 'M2', 'E1', 'E2', 'N1', 'N2', 'O', 'G']
-
-# Base Date is set to May 28, 2026 to sync perfectly with user's live data
 BASE_DATE = date(2026, 5, 28)
 
-# Group offsets calibrated to the May 28, 2026 base date
 OFFSETS = {
     'A': 3,   # 2nd Evening (E2)
     'B': 5,   # 2nd Night (N2)
@@ -46,26 +46,28 @@ OFFSETS = {
     'D': 1    # 2nd Morning (M2)
 }
 
-HOLIDAYS = {
+# Base perpetual holidays
+BASE_HOLIDAYS = {
     "01-26": "Republic Day", "03-04": "Holi", "03-21": "Eid-Ul-Fitr",
     "08-15": "Independence Day", "10-02": "Gandhi Jayanti",
     "10-20": "DUSSEHRA", "11-24": "Gurunanak Jayanti", "12-25": "Christmas Day"
 }
 
-# Updated get_shift function to handle Sunday/Holiday logic for General shifts
+# Combine base holidays with any custom holidays added by the user
+ACTIVE_HOLIDAYS = {**BASE_HOLIDAYS, **st.session_state.custom_holidays}
+
 def get_shift(target_date, group_name, is_holiday):
     delta = (target_date - BASE_DATE).days
     idx = (delta + OFFSETS[group_name]) % 8
     shift = CYCLE[idx]
     
-    # Rule: If it's a General Shift ('G') AND the day is Sunday (6) or a Holiday, make it an Off day ('O')
     if shift == 'G':
         if target_date.weekday() == 6 or is_holiday:
             return 'O'
             
     return shift
 
-# 3. Sidebar UI
+# 3. Sidebar UI - Display Options
 st.sidebar.header("📅 Display Options")
 view_mode = st.sidebar.radio(
     "Choose View Mode:",
@@ -84,12 +86,51 @@ else:
     start_date = date(sel_year, sel_month, 1)
     num_days = calendar.monthrange(sel_year, sel_month)[1]
 
-# 4. Mobile Quick-Glance Dashboard
+st.sidebar.markdown("---")
+
+# 4. Sidebar UI - Time-Restricted Custom Holiday Addition
+st.sidebar.header("➕ Add Custom Holiday")
+
+# Logic to open the window ONLY in December or January
+if today.month in [12, 1]:
+    # If it's December, target year is next year. If January, target year is current year.
+    target_year = today.year + 1 if today.month == 12 else today.year
+    
+    st.sidebar.caption(f"✅ Window Open: You can now schedule holidays for {target_year}.")
+    
+    with st.sidebar.form("holiday_form"):
+        # Restrict the date picker to the target year being scheduled
+        min_allowed_date = date(target_year, 1, 1)
+        max_allowed_date = date(target_year, 12, 31)
+        
+        custom_date = st.date_input(
+            "Select Date",
+            min_value=min_allowed_date,
+            max_value=max_allowed_date,
+            value=min_allowed_date
+        )
+        custom_name = st.text_input("Holiday Name")
+        submit_holiday = st.form_submit_button("Add Holiday")
+
+        if submit_holiday and custom_name:
+            date_key = custom_date.strftime("%m-%d")
+            st.session_state.custom_holidays[date_key] = custom_name
+            st.rerun() # Refresh app to apply the new holiday immediately
+else:
+    # If the current month is Feb through Nov, hide the form and show this message
+    st.sidebar.warning("🔒 Administrative window is closed. Custom holidays for the upcoming year can only be added during December and January.")
+
+# Show currently added custom holidays
+if st.session_state.custom_holidays:
+    st.sidebar.markdown("**Active Custom Holidays:**")
+    for d, name in st.session_state.custom_holidays.items():
+        st.sidebar.text(f"• {d}: {name}")
+
+# 5. Mobile Quick-Glance Dashboard
 if view_mode == "Continuous (Today Onwards)":
     st.markdown(f"### 📍 Today's Shifts ({today.strftime('%d-%b')})")
     
-    # Check if today is a holiday for the quick-glance calculation
-    today_holiday_str = HOLIDAYS.get(today.strftime("%m-%d"), "")
+    today_holiday_str = ACTIVE_HOLIDAYS.get(today.strftime("%m-%d"), "")
     is_today_holiday = bool(today_holiday_str)
     
     col1, col2, col3, col4 = st.columns(4)
@@ -108,7 +149,7 @@ if view_mode == "Continuous (Today Onwards)":
          
     st.markdown("---")
 
-# 5. Generate Rota Data
+# 6. Generate Rota Data
 rota_data = []
 for i in range(num_days):
     if view_mode == "Continuous (Today Onwards)":
@@ -117,7 +158,7 @@ for i in range(num_days):
         curr_date = date(sel_year, sel_month, i + 1)
         
     date_str_mm_dd = curr_date.strftime("%m-%d")
-    holiday_name = HOLIDAYS.get(date_str_mm_dd, "")
+    holiday_name = ACTIVE_HOLIDAYS.get(date_str_mm_dd, "")
     is_holiday = bool(holiday_name)
 
     row = {
@@ -133,30 +174,22 @@ for i in range(num_days):
 
 df = pd.DataFrame(rota_data)
 
-# 6. Styling the DataFrame for Dark Theme
+# 7. Styling the DataFrame for Dark Theme
 def highlight_shifts(val):
-    # Updated to apply colors to the suffixed shift names
     colors = {
-        'M1': ('#D4A373', '#000000'), 
-        'M2': ('#D4A373', '#000000'), 
-        'E1': ('#90323D', '#FFFFFF'), 
-        'E2': ('#90323D', '#FFFFFF'), 
-        'N1': ('#212F45', '#FFFFFF'), 
-        'N2': ('#212F45', '#FFFFFF'), 
-        'O': ('#3E4C5E', '#FFFFFF'), 
-        'G': ('#2D6A4F', '#FFFFFF')  
+        'M1': ('#D4A373', '#000000'), 'M2': ('#D4A373', '#000000'), 
+        'E1': ('#90323D', '#FFFFFF'), 'E2': ('#90323D', '#FFFFFF'), 
+        'N1': ('#212F45', '#FFFFFF'), 'N2': ('#212F45', '#FFFFFF'), 
+        'O': ('#3E4C5E', '#FFFFFF'),  'G': ('#2D6A4F', '#FFFFFF')  
     }
     if val in colors:
         bg_color, text_color = colors[val]
         return f'background-color: {bg_color}; color: {text_color}; font-weight: bold; text-align: center;'
     return ''
 
-styled_df = df.style.map(
-    highlight_shifts, 
-    subset=['A', 'B', 'C', 'D']
-)
+styled_df = df.style.map(highlight_shifts, subset=['A', 'B', 'C', 'D'])
 
-# 7. UI Output
+# 8. UI Output
 st.markdown("### 🗓️ Shift Schedule")
 if view_mode == "Continuous (Today Onwards)":
     st.dataframe(styled_df, use_container_width=True, hide_index=True, height=600)
