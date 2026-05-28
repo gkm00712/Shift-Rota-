@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import date, timedelta
 import calendar
 
-# 1. App Configuration - 'centered' layout often behaves better on mobile
+# 1. App Configuration
 st.set_page_config(page_title="CHP Shift Rota Perpetual", layout="centered", initial_sidebar_state="collapsed")
 
 # Inject Custom CSS for Dark Theme and Mobile Padding reduction
@@ -13,14 +13,12 @@ st.markdown("""
         background-color: #121212;
         color: #FFFFFF;
     }
-    /* Reduce default padding for mobile screens */
     .block-container {
         padding-top: 1.5rem !important;
         padding-bottom: 1.5rem !important;
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
     }
-    /* Style the Today's Shift Cards */
     div[data-testid="metric-container"] {
         background-color: #1E1E1E;
         border: 1px solid #333;
@@ -35,14 +33,16 @@ st.markdown("**NTPC Unchahar | Safety First**")
 
 # 2. Rota Logic Setup
 CYCLE = ['M', 'M', 'E', 'E', 'N', 'N', 'O', 'G']
-BASE_DATE = date(2026, 1, 1)
 
-# Group offsets (A=I, B=II, C=III, D=IV)
+# Base Date is set to May 28, 2026 to sync perfectly with user's live data
+BASE_DATE = date(2026, 5, 28)
+
+# Group offsets calibrated to the May 28, 2026 base date
 OFFSETS = {
-    'A': 4,   # Starts on first 'N' 
-    'B': 0,   # Starts on first 'M' 
-    'C': 2,   # Starts on first 'E' 
-    'D': 6    # Starts on 'O' 
+    'A': 3,   # 2nd Evening
+    'B': 5,   # 2nd Night
+    'C': 7,   # General
+    'D': 1    # 2nd Morning
 }
 
 HOLIDAYS = {
@@ -51,10 +51,18 @@ HOLIDAYS = {
     "10-20": "DUSSEHRA", "11-24": "Gurunanak Jayanti", "12-25": "Christmas Day"
 }
 
-def get_shift(target_date, group_name):
+# Updated get_shift function to handle Sunday/Holiday logic for General shifts
+def get_shift(target_date, group_name, is_holiday):
     delta = (target_date - BASE_DATE).days
     idx = (delta + OFFSETS[group_name]) % 8
-    return CYCLE[idx]
+    shift = CYCLE[idx]
+    
+    # Rule: If it's a General Shift ('G') AND the day is Sunday (6) or a Holiday, make it an Off day ('O')
+    if shift == 'G':
+        if target_date.weekday() == 6 or is_holiday:
+            return 'O'
+            
+    return shift
 
 # 3. Sidebar UI
 st.sidebar.header("📅 Display Options")
@@ -75,25 +83,31 @@ else:
     start_date = date(sel_year, sel_month, 1)
     num_days = calendar.monthrange(sel_year, sel_month)[1]
 
-# 4. Mobile Quick-Glance Dashboard (Only show if looking at current/future continuous view)
+# 4. Mobile Quick-Glance Dashboard
 if view_mode == "Continuous (Today Onwards)":
     st.markdown(f"### 📍 Today's Shifts ({today.strftime('%d-%b')})")
     
+    # Check if today is a holiday for the quick-glance calculation
+    today_holiday_str = HOLIDAYS.get(today.strftime("%m-%d"), "")
+    is_today_holiday = bool(today_holiday_str)
+    
     col1, col2, col3, col4 = st.columns(4)
-    # Calculate today's shifts dynamically
-    s_A = get_shift(today, 'A')
-    s_B = get_shift(today, 'B')
-    s_C = get_shift(today, 'C')
-    s_D = get_shift(today, 'D')
+    s_A = get_shift(today, 'A', is_today_holiday)
+    s_B = get_shift(today, 'B', is_today_holiday)
+    s_C = get_shift(today, 'C', is_today_holiday)
+    s_D = get_shift(today, 'D', is_today_holiday)
 
-    # Display in mobile-friendly metric cards
     col1.metric("Grp A", s_A)
     col2.metric("Grp B", s_B)
     col3.metric("Grp C", s_C)
     col4.metric("Grp D", s_D)
+    
+    if is_today_holiday:
+         st.info(f"🎉 Today is a Holiday: {today_holiday_str} (General shifts marked as 'O')")
+         
     st.markdown("---")
 
-# 5. Generate Rota Data with Shortened Column Names
+# 5. Generate Rota Data
 rota_data = []
 for i in range(num_days):
     if view_mode == "Continuous (Today Onwards)":
@@ -102,17 +116,17 @@ for i in range(num_days):
         curr_date = date(sel_year, sel_month, i + 1)
         
     date_str_mm_dd = curr_date.strftime("%m-%d")
-    holiday = HOLIDAYS.get(date_str_mm_dd, "")
+    holiday_name = HOLIDAYS.get(date_str_mm_dd, "")
+    is_holiday = bool(holiday_name)
 
-    # Shortened keys to prevent horizontal scrolling on mobile
     row = {
-        "Date": curr_date.strftime("%d-%b"), # Removed year to save space
-        "Day": curr_date.strftime("%a"),     # Shortened day (e.g., 'Mon' instead of 'Monday')
-        "A": get_shift(curr_date, 'A'),
-        "B": get_shift(curr_date, 'B'),
-        "C": get_shift(curr_date, 'C'),
-        "D": get_shift(curr_date, 'D'),
-        "Holiday": holiday
+        "Date": curr_date.strftime("%d-%b"), 
+        "Day": curr_date.strftime("%a"),     
+        "A": get_shift(curr_date, 'A', is_holiday),
+        "B": get_shift(curr_date, 'B', is_holiday),
+        "C": get_shift(curr_date, 'C', is_holiday),
+        "D": get_shift(curr_date, 'D', is_holiday),
+        "Holiday": holiday_name
     }
     rota_data.append(row)
 
@@ -148,6 +162,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='font-size: 0.9em; color: #ccc;'>
-<b>Timings:</b> M (07-14) | E (14-22) | N (22-07)
+<b>Timings:</b> M (07-14) | E (14-22) | N (22-07) <br>
+<i>Note: General shifts ('G') automatically convert to Off ('O') on Sundays and Holidays.</i>
 </div>
 """, unsafe_allow_html=True)
