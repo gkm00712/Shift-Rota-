@@ -123,9 +123,12 @@ styled_df = df.style.map(
 )
 
 # 7. UI Output
-# If in continuous mode, restrict height to enable scrolling. If specific month, let it fit the data naturally.
-table_height = 700 if view_mode == "Continuous (Today Onwards)" else None
-st.dataframe(styled_df, use_container_width=True, hide_index=True, height=table_height)
+# If in continuous mode, restrict height to enable scrolling. 
+# If specific month, omit the height parameter to let it fit the data naturally.
+if view_mode == "Continuous (Today Onwards)":
+    st.dataframe(styled_df, use_container_width=True, hide_index=True, height=700)
+else:
+    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 # Footer Information
 st.markdown("---")
