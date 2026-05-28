@@ -1,27 +1,36 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
-import calendar
 
 # 1. App Configuration
-st.set_page_config(page_title="CHP Shift Rota Perpetual", layout="wide")
+# We collapse the sidebar by default since the app is now date-automatic
+st.set_page_config(page_title="CHP Shift Rota Perpetual", layout="wide", initial_sidebar_state="collapsed")
+
+# Inject Custom CSS to force a dark background and white text globally
+st.markdown("""
+    <style>
+    .stApp {
+        background-color: #121212;
+        color: #FFFFFF;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 st.title("🏭 CHP-Operation Department Shift Rota")
 st.markdown("**NTPC Limited Unchahar | Safety Begins with Teamwork**")
 
 # 2. Rota Logic Setup
-# The core 8-day cycle derived from the 2026 roster
 CYCLE = ['M', 'M', 'E', 'E', 'N', 'N', 'O', 'G']
 
 # Base Date: January 1, 2026
 BASE_DATE = date(2026, 1, 1)
 
-# Group offsets calculated to match the exact Jan 1, 2026 schedule from the document
+# Group offsets translated from I, II, III, IV to A, B, C, D
 OFFSETS = {
-    'Group I': 4,   # Starts on first 'N'
-    'Group II': 0,  # Starts on first 'M'
-    'Group III': 2, # Starts on first 'E'
-    'Group IV': 6   # Starts on 'O'
+    'Group A': 4,   # Starts on first 'N' on Jan 1, 2026
+    'Group B': 0,   # Starts on first 'M' on Jan 1, 2026
+    'Group C': 2,   # Starts on first 'E' on Jan 1, 2026
+    'Group D': 6    # Starts on 'O' on Jan 1, 2026
 }
 
 # Fixed Holidays (Month-Day format to repeat perpetually)
@@ -36,64 +45,65 @@ HOLIDAYS = {
     "12-25": "Christmas Day"
 }
 
-# 3. Sidebar Navigation
-st.sidebar.header("📅 Select Timeframe")
-sel_year = st.sidebar.number_input("Year", min_value=2024, max_value=2050, value=2026, step=1)
-sel_month = st.sidebar.selectbox("Month", range(1, 13), format_func=lambda x: calendar.month_name[x])
-
-# 4. Helper Function: Calculate Shift
+# 3. Helper Function: Calculate Shift
 def get_shift(target_date, group_name):
-    # Calculate the number of days since the base date
     delta = (target_date - BASE_DATE).days
-    # Use modulo 8 arithmetic to find the current position in the cycle
     idx = (delta + OFFSETS[group_name]) % 8
     return CYCLE[idx]
 
-# 5. Generate Rota Data for the Selected Month
-num_days = calendar.monthrange(sel_year, sel_month)[1]
+# 4. Generate Rota Data (Today to Jan 31 of next year)
+today = date.today()
+end_date = date(today.year + 1, 1, 31)
+
+# Calculate total days to loop through
+num_days = (end_date - today).days + 1
 rota_data = []
 
-for day in range(1, num_days + 1):
-    curr_date = date(sel_year, sel_month, day)
+for i in range(num_days):
+    curr_date = today + timedelta(days=i)
     date_str_mm_dd = curr_date.strftime("%m-%d")
     
-    # Check for holidays
     holiday = HOLIDAYS.get(date_str_mm_dd, "")
 
     row = {
         "Date": curr_date.strftime("%d-%b-%Y"),
         "Day": curr_date.strftime("%A"),
-        "Group I": get_shift(curr_date, 'Group I'),
-        "Group II": get_shift(curr_date, 'Group II'),
-        "Group III": get_shift(curr_date, 'Group III'),
-        "Group IV": get_shift(curr_date, 'Group IV'),
+        "Group A": get_shift(curr_date, 'Group A'),
+        "Group B": get_shift(curr_date, 'Group B'),
+        "Group C": get_shift(curr_date, 'Group C'),
+        "Group D": get_shift(curr_date, 'Group D'),
         "Remarks / Holiday": holiday
     }
     rota_data.append(row)
 
 df = pd.DataFrame(rota_data)
 
-# 6. Styling the DataFrame
+# 5. Styling the DataFrame for Dark Theme
 def highlight_shifts(val):
-    """Applies background colors to shifts for easier reading."""
+    """Applies high-contrast dark theme colors to shifts."""
+    # Format: 'Shift': ('Background Color', 'Text Color')
     colors = {
-        'M': '#FFE4B5', # Moccasin (Morning)
-        'E': '#FFB6C1', # Light Pink (Evening)
-        'N': '#ADD8E6', # Light Blue (Night)
-        'O': '#D3D3D3', # Light Grey (Off)
-        'G': '#98FB98'  # Pale Green (General)
+        'M': ('#D4A373', '#000000'), # Sand background -> Black text
+        'E': ('#90323D', '#FFFFFF'), # Muted Dark Red -> White text
+        'N': ('#212F45', '#FFFFFF'), # Deep Blue -> White text
+        'O': ('#3E4C5E', '#FFFFFF'), # Slate Grey -> White text
+        'G': ('#2D6A4F', '#FFFFFF')  # Forest Green -> White text
     }
-    bg_color = colors.get(val, '')
-    return f'background-color: {bg_color}; font-weight: bold; text-align: center;' if bg_color else ''
+    
+    if val in colors:
+        bg_color, text_color = colors[val]
+        return f'background-color: {bg_color}; color: {text_color}; font-weight: bold; text-align: center;'
+    return ''
 
-# Apply styling specifically to the group columns
+# Apply styling to the updated group columns
 styled_df = df.style.map(
     highlight_shifts, 
-    subset=['Group I', 'Group II', 'Group III', 'Group IV']
+    subset=['Group A', 'Group B', 'Group C', 'Group D']
 )
 
-# 7. UI Output
-st.dataframe(styled_df, use_container_width=True, hide_index=True)
+# 6. UI Output 
+# Height is set to 700 to allow smooth scrolling through the long list
+st.dataframe(styled_df, use_container_width=True, hide_index=True, height=700)
 
 # Footer Information
 st.markdown("---")
